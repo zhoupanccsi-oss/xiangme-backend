@@ -1,18 +1,15 @@
-// 想么后端 - 稳定版
+// 想么后端 - 完整配对版
 const { createClient } = require('@supabase/supabase-js');
 const { Redis } = require('@upstash/redis');
 const { v4: uuidv4 } = require('uuid');
 
-// 环境变量检查
+// 环境变量
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const REDIS_URL = process.env.UPSTASH_REDIS_URL;
 const DEMO_MODE = process.env.DEMO_MODE !== 'false';
 
-// 初始化（带错误处理）
+// 初始化 Supabase
 let supabase = null;
-let redis = null;
-
 try {
   if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -21,16 +18,9 @@ try {
   console.error('Supabase init error:', e.message);
 }
 
-try {
-  if (REDIS_URL) {
-    redis = new Redis({ url: REDIS_URL });
-  }
-} catch (e) {
-  console.error('Redis init error:', e.message);
-}
-
-// 内存备用
-const memoryStore = new Map();
+// 内存存储（等待配对的用户）
+const waitingUsers = new Map(); // userId -> {phone, lat, lng, gender, waitToken, time}
+const matchResults = new Map(); // waitToken -> {matched, partnerPhone, distance}
 
 module.exports = async (req, res) => {
   // CORS
@@ -50,10 +40,9 @@ module.exports = async (req, res) => {
       return res.json({
         status: 'ok',
         service: 'xiangme-backend',
-        version: '1.0.0',
+        version: '1.0.1',
         demo_mode: DEMO_MODE,
-        supabase_connected: !!supabase,
-        redis_connected: !!redis,
+        waiting_count: waitingUsers.size,
         timestamp: new Date().toISOString()
       });
     }
@@ -66,23 +55,10 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: '手机号不能为空' });
       }
       
-      const fullPhone = phone.startsWith('+') ? phone : `+86${phone}`;
-      const code = DEMO_MODE ? '888888' : Math.random().toString().slice(2, 8);
-      
-      // 保存到内存或 Redis
-      memoryStore.set(`otp:${fullPhone}`, { code, time: Date.now() });
-      if (redis) {
-        try {
-          await redis.setex(`otp:${fullPhone}`, 300, code);
-        } catch (e) {
-          console.error('Redis set error:', e.message);
-        }
-      }
-      
       return res.json({
         success: true,
-        message: DEMO_MODE ? '验证码已发送（演示模式: 888888）' : '验证码已发送',
-        demo: DEMO_MODE
+        message: '验证码已发送（演示模式: 888888）',
+        demo: true
       });
     }
     
@@ -94,54 +70,79 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: '手机号和验证码不能为空' });
       }
       
-      const fullPhone = phone.startsWith('+') ? phone : `+86${phone}`;
-      
-      // 验证
-      let valid = false;
-      if (DEMO_MODE && otp === '888888') {
-        valid = true;
-      } else {
-        const saved = memoryStore.get(`otp:${fullPhone}`);
-        if (saved && saved.code === otp) {
-          valid = true;
-          memoryStore.delete(`otp:${fullPhone}`);
-        }
-      }
-      
-      if (!valid) {
+      if (otp !== '888888') {
         return res.status(401).json({ error: '验证码错误' });
       }
       
-      // 创建用户（简化版）
-      const userId = uuidv4();
+      const userId = 'user_' + Date.now();
       
       return res.json({
         success: true,
         userId: userId,
         token: uuidv4(),
-        phone: fullPhone
+        phone: phone
       });
     }
     
     // 发送配对信号
     if (path === '/api/match/signal' && req.method === 'POST') {
-      const { userId, phone, latitude, longitude } = req.body || {};
+      const { userId, phone, latitude, longitude, gender } = req.body || {};
       
-      if (!userId || !phone) {
+      if (!userId || !phone || latitude === undefined || longitude === undefined) {
         return res.status(400).json({ error: '缺少必要参数' });
       }
       
       const waitToken = uuidv4();
+      const userGender = gender || 'MALE';
       
-      // 保存到内存
-      memoryStore.set(`wait:${userId}`, {
+      // 保存到等待列表
+      waitingUsers.set(userId, {
         phone,
-        lat: latitude,
-        lng: longitude,
-        time: Date.now(),
-        waitToken
+        lat: parseFloat(latitude),
+        lng: parseFloat(longitude),
+        gender: userGender,
+        waitToken,
+        time: Date.now()
       });
       
+      console.log(`User ${userId} waiting, total: ${waitingUsers.size}`);
+      
+      // 立即查找匹配
+      const match = findNearbyMatch(userId, parseFloat(latitude), parseFloat(longitude), userGender);
+      
+      if (match) {
+        // 配对成功！
+        const result = {
+          matched: true,
+          partnerPhone: match.phone,
+          distance: match.distance,
+          message: '配对成功'
+        };
+        
+        // 保存配对结果
+        matchResults.set(waitToken, result);
+        matchResults.set(match.waitToken, {
+          matched: true,
+          partnerPhone: phone,
+          distance: match.distance,
+          message: '配对成功'
+        });
+        
+        // 从等待列表移除
+        waitingUsers.delete(userId);
+        waitingUsers.delete(match.userId);
+        
+        console.log(`Match success: ${userId} <-> ${match.userId}`);
+        
+        return res.json({
+          success: true,
+          matched: true,
+          ...result,
+          waitToken
+        });
+      }
+      
+      // 未匹配，返回等待
       return res.json({
         success: true,
         matched: false,
@@ -154,10 +155,34 @@ module.exports = async (req, res) => {
     if (path.startsWith('/api/match/result/') && req.method === 'GET') {
       const waitToken = path.replace('/api/match/result/', '');
       
-      // 简化：直接返回未匹配
+      const result = matchResults.get(waitToken);
+      
+      if (result) {
+        return res.json({
+          matched: result.matched,
+          partnerPhone: result.partnerPhone,
+          distance: result.distance,
+          message: result.message
+        });
+      }
+      
       return res.json({
         matched: false,
         message: '等待配对中...'
+      });
+    }
+    
+    // 取消配对
+    if (path === '/api/match/cancel' && req.method === 'POST') {
+      const { userId } = req.body || {};
+      
+      if (userId) {
+        waitingUsers.delete(userId);
+      }
+      
+      return res.json({
+        success: true,
+        message: '已取消配对'
       });
     }
     
@@ -171,3 +196,46 @@ module.exports = async (req, res) => {
     });
   }
 };
+
+// 查找附近匹配
+function findNearbyMatch(userId, lat, lng, gender) {
+  const targetGender = gender === 'MALE' ? 'FEMALE' : 'MALE';
+  const MATCH_RADIUS = 10000; // 10公里
+  
+  for (const [otherId, other] of waitingUsers.entries()) {
+    if (otherId === userId) continue;
+    
+    // 性别匹配
+    if (other.gender !== targetGender) continue;
+    
+    // 计算距离
+    const distance = calculateDistance(lat, lng, other.lat, other.lng);
+    
+    if (distance <= MATCH_RADIUS) {
+      return {
+        userId: otherId,
+        phone: other.phone,
+        waitToken: other.waitToken,
+        distance: Math.round(distance)
+      };
+    }
+  }
+  
+  return null;
+}
+
+// 计算距离（Haversine公式）
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // 地球半径（米）
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  
+  return R * c;
+}
