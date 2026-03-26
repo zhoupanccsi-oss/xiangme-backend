@@ -93,9 +93,8 @@ module.exports = async (req, res) => {
       }
       
       const waitToken = uuidv4();
-      // 从手机号判断性别：尾号偶数为女，奇数为男
-      const phoneLastDigit = phone ? parseInt(phone.slice(-1)) : 0;
-      const userGender = gender || (phoneLastDigit % 2 === 0 ? 'FEMALE' : 'MALE');
+      // 使用前端传来的 gender，默认为 MALE
+      const userGender = gender || 'MALE';
       
       console.log(`User ${userId} (${userGender}) waiting at ${latitude},${longitude}`);
       
