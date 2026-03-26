@@ -93,8 +93,11 @@ module.exports = async (req, res) => {
       }
       
       const waitToken = uuidv4();
-      // 从 userId 判断性别：偶数结尾为女，奇数结尾为男
-      const userGender = gender || (userId.charCodeAt(userId.length - 1) % 2 === 0 ? 'FEMALE' : 'MALE');
+      // 从手机号判断性别：尾号偶数为女，奇数为男
+      const phoneLastDigit = phone ? parseInt(phone.slice(-1)) : 0;
+      const userGender = gender || (phoneLastDigit % 2 === 0 ? 'FEMALE' : 'MALE');
+      
+      console.log(`User ${userId} (${userGender}) waiting at ${latitude},${longitude}`);
       
       // 保存到等待列表
       waitingUsers.set(userId, {
