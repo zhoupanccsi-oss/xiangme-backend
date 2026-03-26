@@ -1,4 +1,11 @@
 // Vercel Serverless Functions - 想么后端主入口
+
+// 添加详细错误日志
+console.log('Starting server...');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'Set' : 'Not set');
+console.log('UPSTASH_REDIS_URL:', process.env.UPSTASH_REDIS_URL ? 'Set' : 'Not set');
+
 const authRoutes = require('../src/routes/auth-vercel');
 const matchRoutes = require('../src/routes/match-vercel');
 const pushRoutes = require('../src/routes/push-vercel');
