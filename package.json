@@ -1,0 +1,15 @@
+{
+  "name": "xiangme-backend",
+  "version": "1.0.0",
+  "description": "想么 APP 后端 - Vercel Serverless",
+  "main": "api/index.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "@upstash/redis": "^1.25.0",
+    "uuid": "^9.0.1"
+  }
+}

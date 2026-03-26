@@ -1,0 +1,19 @@
+# 依赖
+node_modules/
+
+# 环境变量（包含敏感信息）
+.env
+.env.local
+.env.production
+
+# 日志
+npm-debug.log*
+
+# Vercel
+.vercel
+
+# 本地测试
+server.js
+src/services/db.js
+src/services/redis.js
+src/routes/*-express.js
