@@ -1,52 +1,62 @@
-// Vercel Serverless Functions - 想么后端主入口
-
-// 添加详细错误日志
-console.log('Starting server...');
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'Set' : 'Not set');
-console.log('UPSTASH_REDIS_URL:', process.env.UPSTASH_REDIS_URL ? 'Set' : 'Not set');
-
-const authRoutes = require('../src/routes/auth-vercel');
-const matchRoutes = require('../src/routes/match-vercel');
-const pushRoutes = require('../src/routes/push-vercel');
-
-module.exports = async (req, res) => {
-  // 设置 CORS
+// 想么后端 - 简化版
+module.exports = (req, res) => {
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
   
-  // 路由分发
-  const path = req.url.replace('/api', '');
+  const path = req.url;
   
-  try {
-    if (path.startsWith('/auth')) {
-      return await authRoutes(req, res);
-    }
-    if (path.startsWith('/match')) {
-      return await matchRoutes(req, res);
-    }
-    if (path.startsWith('/push')) {
-      return await pushRoutes(req, res);
-    }
-    
-    // 健康检查
-    if (path === '/health' || path === '/') {
-      return res.json({
-        status: 'ok',
-        service: 'xiangme-backend',
-        version: '1.0.0',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    return res.status(404).json({ error: 'Not found' });
-  } catch (error) {
-    console.error('API Error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+  // 健康检查
+  if (path === '/api/health' || path === '/') {
+    return res.json({
+      status: 'ok',
+      service: 'xiangme-backend',
+      version: '1.0.0',
+      timestamp: new Date().toISOString()
+    });
   }
+  
+  // 发送验证码
+  if (path === '/api/auth/send-otp' && req.method === 'POST') {
+    return res.json({
+      success: true,
+      message: '验证码已发送（演示模式: 888888）',
+      demo: true
+    });
+  }
+  
+  // 验证登录
+  if (path === '/api/auth/verify-otp' && req.method === 'POST') {
+    return res.json({
+      success: true,
+      userId: 'demo-user-id',
+      token: 'demo-token',
+      phone: '+8613800138000'
+    });
+  }
+  
+  // 发送配对信号
+  if (path === '/api/match/signal' && req.method === 'POST') {
+    return res.json({
+      success: true,
+      matched: false,
+      waitToken: 'demo-wait-token',
+      timeout: 60
+    });
+  }
+  
+  // 查询配对结果
+  if (path.startsWith('/api/match/result/') && req.method === 'GET') {
+    return res.json({
+      matched: false,
+      message: '等待配对中...'
+    });
+  }
+  
+  return res.status(404).json({ error: 'Not found' });
 };
