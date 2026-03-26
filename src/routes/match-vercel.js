@@ -2,7 +2,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { createClient } = require('@supabase/supabase-js');
 const { Redis } = require('@upstash/redis');
-const { MATCH_TIMEOUT, MATCH_RADIUS_METERS, SUPABASE_URL, SUPABASE_SERVICE_KEY, UPSTASH_REDIS_URL } = require('../config');
+const { MATCH_TIMEOUT, MATCH_RADIUS_METERS, SUPABASE_URL, SUPABASE_SERVICE_KEY, UPSTASH_REDIS_URL } = require('../config/index');
 
 // 初始化客户端
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
