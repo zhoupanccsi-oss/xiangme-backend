@@ -88,12 +88,13 @@ module.exports = async (req, res) => {
     if (path === '/api/match/signal' && req.method === 'POST') {
       const { userId, phone, latitude, longitude, gender } = req.body || {};
       
-      if (!userId || !phone || latitude === undefined || longitude === undefined) {
+      if (!userId || latitude === undefined || longitude === undefined) {
         return res.status(400).json({ error: '缺少必要参数' });
       }
       
       const waitToken = uuidv4();
-      const userGender = gender || 'MALE';
+      // 从 userId 判断性别：偶数结尾为女，奇数结尾为男
+      const userGender = gender || (userId.charCodeAt(userId.length - 1) % 2 === 0 ? 'FEMALE' : 'MALE');
       
       // 保存到等待列表
       waitingUsers.set(userId, {
